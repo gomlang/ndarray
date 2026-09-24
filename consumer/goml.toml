@@ -1,0 +1,6 @@
+[module]
+path = "consumer::ndarray"
+
+[dependencies]
+"ecosystem::ndarray" = "0.1.0"
+"ecosystem::verification" = "0.1.0"
