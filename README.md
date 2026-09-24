@@ -201,12 +201,12 @@ separate multiply/add rounding.
 From the repository root:
 
 ```sh
-just ecosystem-test ndarray
+(cd ../verification && just ecosystem-test ndarray)
 ```
 
 The verifier runs module and independent versioned-consumer tests, fresh/cached
 build checks, 2,929 deterministic NumPy 2.2.6 reference cases and SIMD checks.
-The native consumer tests read [frozen NumPy 2.2.6 reference vectors](../../goml-dev/ecosystem/consumers/ndarray/tests/data/README.md), with the original seed and SHA-256-pinned reference-wheel provenance recorded. No Python or NumPy installation is required.
+The native consumer tests read [frozen NumPy 2.2.6 reference vectors](consumer/tests/data/README.md), with the original seed and SHA-256-pinned reference-wheel provenance recorded. No Python or NumPy installation is required.
 Interoperability includes negative cases and independent QR/LU reconstruction,
 not just round trips through the library.
 
