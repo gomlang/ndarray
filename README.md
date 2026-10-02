@@ -106,7 +106,7 @@ for the reference convention used by the interoperability tests.
 `Scalar` requires `zero`, `one` and fallible `add`, `subtract`, `multiply`,
 `divide`. Its default methods provide batch evaluation, sums, products and dot
 products. Downstream implementations inherit these across module boundaries;
-the independent consumer supplies a complex-number type. Implementations may
+the example supplies a complex-number type. Implementations may
 override kernels. The array API rejects a custom batch result of incorrect
 length before constructing an array.
 
@@ -204,16 +204,28 @@ From the repository root:
 (cd ../verification && just ecosystem-test ndarray)
 ```
 
-The verifier runs module and independent versioned-consumer tests, fresh/cached
+The verifier runs library and example tests, independent downstream verification, fresh/cached
 build checks, 2,929 deterministic NumPy 2.2.6 reference cases and SIMD checks.
-The native consumer tests read [frozen NumPy 2.2.6 reference vectors](consumer/tests/data/README.md), with the original seed and SHA-256-pinned reference-wheel provenance recorded. No Python or NumPy installation is required.
+The native example tests read [frozen NumPy 2.2.6 reference vectors](examples/basic/tests/data/README.md), with the original seed and SHA-256-pinned reference-wheel provenance recorded. No Python or NumPy installation is required.
 Interoperability includes negative cases and independent QR/LU reconstruction,
 not just round trips through the library.
 
 The native GoML verifier checks generated assembly metadata and actual linked symbols,
 then builds separate `GOML_SIMD=sse2` and `GOML_SIMD=scalar` targets under the
-consumer's `_artifact/`. Both repeat all reference cases and consumer smoke
-checks. The current consumer links 10 native kernels by default, five with SSE2
+library's `_artifact/`. Both repeat all reference cases and example smoke
+checks. The current example links 10 native kernels by default, five with SSE2
 only, and none with scalar-only code generation. This establishes emitted and
 linked paths; it is not a speed benchmark or proof that AVX2 executes on a CPU
 without AVX2 support.
+
+## Development and examples
+
+Requires GoML 0.1.55 or newer. The `examples/basic/` example shares the root manifest; test-only helpers are declared in `[dev-dependencies]`. From the library root, run:
+
+```sh
+goml run --example basic
+goml test
+goml verify --timeout 300s
+```
+
+`goml test` builds the example and runs its tests. `goml verify` repeats the example checks as an independent module against an isolated registry snapshot. `(cd ../verification && just ecosystem-test ndarray)` also retains the library-specific smoke and compatibility checks.

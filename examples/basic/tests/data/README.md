@@ -6,4 +6,4 @@ These values were exported once from the independent reference implementation us
 
 SHA-256 of this vector file: `f72bba75cfa67253b60b1d06e4d33366801e6257b374c6eb044175f39fb2bae4`.
 
-Run the consumer’s ordinary `goml test` after resolving its local ecosystem dependencies. `tests/reference_test.gom` evaluates each case directly through the GoML consumer API and asserts both the case count and results. New behavior should receive independently calculated expected values or a small native reference model; do not regenerate expectations from the implementation being tested.
+Run `goml test --example basic` from the library root after resolving its development dependencies. `tests/reference_test.gom` evaluates each case directly through the GoML example API and asserts both the case count and results. New behavior should receive independently calculated expected values or a small native reference model; do not regenerate expectations from the implementation being tested.

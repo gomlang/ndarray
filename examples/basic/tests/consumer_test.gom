@@ -1,6 +1,6 @@
 package tests;
 
-use consumer::ndarray;
+use ecosystem::ndarray::examples::basic as ndarray;
 use std::testing;
 
 #[test]
