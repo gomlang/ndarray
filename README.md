@@ -127,7 +127,7 @@ the same element type; conversion uses `map`.
 | `all`, `any` | Boolean reductions; empty results are true/false respectively |
 | `Array::[f64]::linspace(start, end, count, endpoint)` | Specialized associated constructor; `Array::linspace` infers the owner and the module-level `linspace` remains available |
 | `mean`, `variance(ddof)`, `stddev(ddof)`, `norm` | `f64` statistics and scaled Euclidean/Frobenius norm |
-| `mean_axes`, `variance_axes`, `min_axes`, `max_axes` | Multi-axis `f64` reductions |
+| `mean_axes`, `variance_axes`, `stddev_axes`, `min_axes`, `max_axes` | Multi-axis `f64` reductions |
 | `minimum`, `maximum`, `argmin`, `argmax` | Global `f64` extrema and flat positions |
 | `argmin_axis`, `argmax_axis` | Axis-wise positions as `Array[isize]` |
 | `sqrt`, `exp`, `log`, `abs`, `negate`, `pow`, `clip` | Elementwise `f64` operations |
@@ -146,6 +146,12 @@ narrowing. Mean retries with scaled values when a finite input's sum overflows.
 Variance uses Welford updates and retries in scaled coordinates when finite inputs
 produce a nonfinite intermediate, avoiding spurious negative infinity/NaN and
 recovering finite variances when the unnormalized sum of squares overflows.
+Standard deviation computes the square root before restoring scale when variance
+underflows to zero or overflows. For example, `[1e308, -1e308]` has a finite
+population standard deviation, and `[1e-200, -1e-200]` has a nonzero one, even
+though their variances cannot be represented as finite nonzero `f64` values.
+`stddev_axes` uses the same stable algorithm and degrees-of-freedom policy for
+strided groups. Nonfinite inputs retain the variance-based NaN policy.
 Norm uses scaling to avoid squaring large raw values. These improve common
 numerical cases without guaranteeing arbitrary-precision results. Extrema choose the first tie or first NaN. NaNs
 propagate through statistics; `all_close` can optionally equate NaNs and always

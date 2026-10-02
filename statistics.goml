@@ -54,6 +54,10 @@ fn variance_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {
 }
 
 fn scaled_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
+    normalized_variance(values, ddof, scale) * scale * scale
+}
+
+fn normalized_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
     let mut mean = 0.0;
     let mut squares = 0.0;
     let mut count = 0;
@@ -64,8 +68,27 @@ fn scaled_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
         mean += delta / count_float(count);
         squares += delta * (value - mean);
     }
-    let variance = squares / count_float(values.len() - ddof);
-    variance * scale * scale
+    squares / count_float(values.len() - ddof)
+}
+
+fn stddev_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {
+    let variance = variance_values(values, ddof)?;
+    if math::is_finite(variance) && variance > 0.0 {
+        return Result::Ok(math::sqrt(variance))
+    }
+    let mut scale = 0.0;
+    for value in values {
+        if !math::is_finite(value) {
+            return Result::Ok(math::sqrt(variance))
+        }
+        if magnitude(value) > scale {
+            scale = magnitude(value);
+        }
+    }
+    if scale == 0.0 {
+        return Result::Ok(0.0)
+    }
+    Result::Ok(math::sqrt(normalized_variance(values, ddof, scale)) * scale)
 }
 
 fn extreme_index(values: Slice[f64], maximum: bool) -> Result[isize, Error] {
@@ -165,7 +188,7 @@ impl Array[f64] {
     }
 
     pub fn stddev(self: Array[f64], ddof: isize) -> Result[f64, Error] {
-        Result::Ok(math::sqrt(self.variance(ddof)?))
+        stddev_values(self.to_vec().as_slice(), ddof)
     }
 
     pub fn minimum(self: Array[f64]) -> Result[f64, Error] {
@@ -207,6 +230,18 @@ impl Array[f64] {
             )
         }
         self.reduce_axes(axes, keep_dimensions, |values| variance_values(values, ddof))
+    }
+
+    pub fn stddev_axes(self: Array[f64], axes: Vec[isize], keep_dimensions: bool, ddof: isize) -> Result[
+        Array[f64],
+        Error,
+    ] {
+        if ddof < 0 {
+            return Result::Err(
+                Error::new(ErrorKind::Arithmetic, "degrees of freedom must be nonnegative"),
+            )
+        }
+        self.reduce_axes(axes, keep_dimensions, |values| stddev_values(values, ddof))
     }
 
     pub fn min_axes(self: Array[f64], axes: Vec[isize], keep_dimensions: bool) -> Result[
