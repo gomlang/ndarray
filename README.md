@@ -142,9 +142,12 @@ any order but cannot repeat. Custom groups traverse reduced axes in their
 original axis order, with the last axis varying fastest.
 
 Floating sums use Neumaier compensation; `f32` sums accumulate in `f64` before
-narrowing. Variance uses Welford updates, and norm uses scaling to avoid squaring
-large raw values. These improve common numerical cases without guaranteeing
-arbitrary-precision results. Extrema choose the first tie or first NaN. NaNs
+narrowing. Mean retries with scaled values when a finite input's sum overflows.
+Variance uses Welford updates and retries in scaled coordinates when finite inputs
+produce a nonfinite intermediate, avoiding spurious negative infinity/NaN and
+recovering finite variances when the unnormalized sum of squares overflows.
+Norm uses scaling to avoid squaring large raw values. These improve common
+numerical cases without guaranteeing arbitrary-precision results. Extrema choose the first tie or first NaN. NaNs
 propagate through statistics; `all_close` can optionally equate NaNs and always
 handles equal infinities explicitly. Sum/dot rounding can differ from NumPy or
 between execution modes; use appropriate tolerances.

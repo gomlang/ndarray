@@ -6,7 +6,24 @@ fn mean_values(values: Slice[f64]) -> Result[f64, Error] {
     if values.len() == 0 {
         return Result::Err(Error::new(ErrorKind::Empty, "mean requires at least one value"))
     }
-    Result::Ok(compensated_sum(values) / count_float(values.len()))
+    let total = compensated_sum(values);
+    if math::is_finite(total) {
+        return Result::Ok(total / count_float(values.len()))
+    }
+    let mut scale = 0.0;
+    for value in values {
+        if !math::is_finite(value) {
+            return Result::Ok(total / count_float(values.len()))
+        }
+        if magnitude(value) > scale {
+            scale = magnitude(value);
+        }
+    }
+    let normalized = Vec::with_capacity(values.len());
+    for value in values {
+        normalized.push(value / scale);
+    }
+    Result::Ok((compensated_sum(normalized.as_slice()) / count_float(values.len())) * scale)
 }
 
 fn variance_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {
@@ -20,16 +37,35 @@ fn variance_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {
             Error::new(ErrorKind::Empty, "variance has no remaining degrees of freedom"),
         )
     }
+    let variance = scaled_variance(values, ddof, 1.0);
+    if math::is_finite(variance) {
+        return Result::Ok(variance)
+    }
+    let mut scale = 0.0;
+    for value in values {
+        if !math::is_finite(value) {
+            return Result::Ok(variance)
+        }
+        if magnitude(value) > scale {
+            scale = magnitude(value);
+        }
+    }
+    Result::Ok(scaled_variance(values, ddof, scale))
+}
+
+fn scaled_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
     let mut mean = 0.0;
     let mut squares = 0.0;
     let mut count = 0;
-    for value in values {
+    for original in values {
+        let value = original / scale;
         count += 1;
         let delta = value - mean;
         mean += delta / count_float(count);
         squares += delta * (value - mean);
     }
-    Result::Ok(squares / count_float(values.len() - ddof))
+    let variance = squares / count_float(values.len() - ddof);
+    variance * scale * scale
 }
 
 fn extreme_index(values: Slice[f64], maximum: bool) -> Result[isize, Error] {
