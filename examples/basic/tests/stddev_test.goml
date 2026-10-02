@@ -1,0 +1,18 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::testing;
+
+#[test]
+fn downstream_axis_standard_deviation_retains_representable_scale() -> () {
+    let input = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 2]), Vec::from_array([1e300, -1e300, 1e-300, -1e-300])),
+        "data",
+    );
+    let result = testing::expect_ok(
+        input.stddev_axes(Vec::from_array([-1]), false, 0),
+        "standard deviations",
+    );
+    testing::assert_eq(testing::expect_ok(result.get_flat(0), "large"), 1e300);
+    testing::assert_eq(testing::expect_ok(result.get_flat(1), "small"), 1e-300);
+}

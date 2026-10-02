@@ -1,0 +1,58 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SliceSpec, ErrorKind};
+use std::testing;
+use std::math;
+
+#[test]
+fn standard_deviation_preserves_large_tiny_and_subnormal_scales() -> () {
+    for scale in[1e308, 1e200, 1e-200, 1e-300, 1e-320] {
+        let values = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2]), Vec::from_array([scale, -scale])),
+            "values",
+        );
+        let population = testing::expect_ok(values.stddev(0), "population deviation");
+        testing::assert(population > 0.0 && math::is_finite(population));
+        testing::assert(population / scale > 0.999999999999 && population / scale < 1.000000000001);
+        let sample = testing::expect_ok(values.stddev(1), "sample deviation");
+        testing::assert(sample / scale > 1.413 && sample / scale < 1.416);
+    }
+    let constant = testing::expect_ok(Array::full(Vec::from_array([2]), 1e308), "constant");
+    testing::assert_eq(testing::expect_ok(constant.stddev(1), "constant deviation"), 0.0);
+}
+
+#[test]
+fn axis_deviation_uses_strided_groups_and_degrees_of_freedom() -> () {
+    let matrix = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 2]), Vec::from_array([1e308, 1e-200, -1e308, -1e-200])),
+        "matrix",
+    );
+    let reversed = testing::expect_ok(matrix.slice(0, SliceSpec::reverse()), "reversed");
+    let result = testing::expect_ok(
+        reversed.stddev_axes(Vec::from_array([0]), true, 0),
+        "deviations",
+    );
+    testing::assert(result.shape() == Vec::from_array([1, 2]));
+    testing::assert_eq(testing::expect_ok(result.get_flat(0), "large"), 1e308);
+    testing::assert_eq(testing::expect_ok(result.get_flat(1), "tiny"), 1e-200);
+    testing::assert_eq(testing::expect_err(matrix.stddev(4), "ddof").kind, ErrorKind::Empty);
+    let empty: Array[f64] = testing::expect_ok(
+        Array::from_vec(Vec::from_array([0, 2]), Vec::new()),
+        "empty",
+    );
+    testing::assert_eq(
+        testing::expect_err(empty.stddev_axes(Vec::from_array([1]), false, -1), "negative ddof").kind,
+        ErrorKind::Arithmetic,
+    );
+    testing::assert(
+        testing::expect_ok(empty.stddev_axes(Vec::from_array([1]), false, 0), "no groups").is_empty(),
+    );
+    testing::assert(
+        math::is_nan(
+            testing::expect_ok(
+                Array::scalar(float64_from_bits(0x7ff0000000000000)).stddev(0),
+                "infinite",
+            ),
+        ),
+    );
+}
