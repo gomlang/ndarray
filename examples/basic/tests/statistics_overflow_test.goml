@@ -1,0 +1,31 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::math;
+use std::testing;
+
+fn statistic_abs(value: f64) -> f64 {
+    if value < 0.0 {
+        -value
+    } else {
+        value
+    }
+}
+
+#[test]
+fn downstream_statistics_avoid_intermediate_overflow() -> () {
+    let values = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 2]), Vec::from_array([1e308, 1e308, 1e154, -1e154])),
+        "measurements",
+    );
+    let means = testing::expect_ok(values.mean_axes(Vec::from_array([1]), true), "means");
+    testing::assert_eq(testing::expect_ok(means.get_flat(0), "first mean"), 1e308);
+    let variances = testing::expect_ok(
+        values.variance_axes(Vec::from_array([1]), false, 0),
+        "variances",
+    );
+    testing::assert_eq(testing::expect_ok(variances.get_flat(0), "constant variance"), 0.0);
+    let variance = testing::expect_ok(variances.get_flat(1), "second variance");
+    testing::assert(math::is_finite(variance));
+    testing::assert(statistic_abs(variance / 1e308 - 1.0) < 1e-14);
+}

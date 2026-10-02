@@ -1,0 +1,79 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SliceSpec};
+use std::math;
+use std::testing;
+
+fn statistic_abs(value: f64) -> f64 {
+    if value < 0.0 {
+        -value
+    } else {
+        value
+    }
+}
+
+#[test]
+fn finite_means_survive_overflowing_intermediate_sums() -> () {
+    let positive = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, 1e308])),
+        "large positives",
+    );
+    testing::assert_eq(testing::expect_ok(positive.mean(), "mean"), 1e308);
+    let cancellation = testing::expect_ok(
+        Array::from_vec(Vec::from_array([4]), Vec::from_array([1e308, 1e308, -1e308, -1e308])),
+        "cancellation",
+    );
+    testing::assert_eq(testing::expect_ok(cancellation.mean(), "cancelled mean"), 0.0);
+    let negative = positive.negate();
+    testing::assert_eq(testing::expect_ok(negative.mean(), "negative mean"), -1e308);
+}
+
+#[test]
+fn scaled_variance_avoids_spurious_overflow_and_negative_infinity() -> () {
+    let finite = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e154, -1e154])),
+        "finite variance",
+    );
+    let variance = testing::expect_ok(finite.variance(0), "variance");
+    testing::assert(math::is_finite(variance));
+    testing::assert(statistic_abs(variance / 1e308 - 1.0) < 1e-14);
+    let large = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, -1e308])),
+        "large variance",
+    );
+    let variance = testing::expect_ok(large.variance(0), "overflowing variance");
+    testing::assert(math::is_infinite(variance) && variance > 0.0);
+    let identical = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, 1e308])),
+        "identical",
+    );
+    testing::assert_eq(testing::expect_ok(identical.variance(1), "zero sample variance"), 0.0);
+}
+
+#[test]
+fn overflow_fallback_applies_to_strided_axis_groups_and_preserves_nonfinite_policy() -> () {
+    let matrix = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 2]), Vec::from_array([1e308, 1e154, 1e308, -1e154])),
+        "matrix",
+    );
+    let reversed = testing::expect_ok(matrix.slice(0, SliceSpec::reverse()), "reverse rows");
+    let means = testing::expect_ok(reversed.mean_axes(Vec::from_array([0]), false), "column means");
+    testing::assert_eq(testing::expect_ok(means.get_flat(0), "large mean"), 1e308);
+    let variance = testing::expect_ok(
+        reversed.variance_axes(Vec::from_array([0]), false, 0),
+        "column variances",
+    );
+    testing::assert(
+        statistic_abs(testing::expect_ok(variance.get_flat(1), "finite variance") / 1e308 - 1.0)
+            < 1e-14,
+    );
+    let infinity = float64_from_bits(0x7ff0000000000000);
+    let nonfinite = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([infinity, 1.0])),
+        "infinite input",
+    );
+    testing::assert_eq(testing::expect_ok(nonfinite.mean(), "infinite mean"), infinity);
+    testing::assert(math::is_nan(testing::expect_ok(nonfinite.variance(0), "infinite variance")));
+    let nan = Array::scalar(float64_from_bits(0x7ff8000000000000));
+    testing::assert(math::is_nan(testing::expect_ok(nan.mean(), "NaN mean")));
+}
