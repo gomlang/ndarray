@@ -147,7 +147,9 @@ Variance uses Welford updates and retries in scaled coordinates when finite inpu
 produce a nonfinite intermediate, avoiding spurious negative infinity/NaN and
 recovering finite variances when the unnormalized sum of squares overflows.
 Standard deviation computes the square root before restoring scale when variance
-underflows to zero or overflows. For example, `[1e308, -1e308]` has a finite
+is subnormal, underflows to zero or overflows. This also avoids amplifying the
+rounding error of a positive subnormal variance: `[2e-162, -2e-162]` retains
+population standard deviation `2e-162`. For example, `[1e308, -1e308]` has a finite
 population standard deviation, and `[1e-200, -1e-200]` has a nonzero one, even
 though their variances cannot be represented as finite nonzero `f64` values.
 `stddev_axes` uses the same stable algorithm and degrees-of-freedom policy for

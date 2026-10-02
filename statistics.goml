@@ -73,7 +73,7 @@ fn normalized_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
 
 fn stddev_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {
     let variance = variance_values(values, ddof)?;
-    if math::is_finite(variance) && variance > 0.0 {
+    if math::is_finite(variance) && variance >= float64_from_bits(0x0010000000000000) {
         return Result::Ok(math::sqrt(variance))
     }
     let mut scale = 0.0;
