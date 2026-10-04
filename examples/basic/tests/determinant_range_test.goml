@@ -1,0 +1,87 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SolveOptions};
+use std::testing;
+use std::math;
+
+fn diagonal_for_determinant(values: Vec[f64]) -> Array[f64] {
+    let data = Vec::new();
+    for row in 0..values.len() {
+        for column in 0..values.len() {
+            data.push(
+                if row == column {
+                    values[row]
+                } else {
+                    0.0
+                },
+            );
+        }
+    }
+    testing::expect_ok(
+        Array::from_vec(Vec::from_array([values.len(), values.len()]), data),
+        "diagonal matrix",
+    )
+}
+
+fn determinant_power(exponent: isize) -> f64 {
+    float64_from_bits((exponent + 1023).to_u64() << 52)
+}
+
+#[test]
+fn determinant_recovers_finite_products_after_intermediate_overflow_and_underflow() -> () {
+    let high = determinant_power(800);
+    let low = determinant_power(-800);
+    let options = SolveOptions { absolute_tolerance: 0.0, relative_tolerance: 0.0 };
+    for diagonal in Vec::from_array(
+        [Vec::from_array([high, high, low, low]), Vec::from_array([low, low, high, high])],
+    ) {
+        let input = diagonal_for_determinant(diagonal);
+        let factor = testing::expect_ok(input.lu(options), "finite LU factors");
+        testing::assert_eq(factor.determinant(), 1.0);
+        testing::assert_eq(testing::expect_ok(input.determinant(), "finite determinant"), 1.0);
+        let swapped = testing::expect_ok(
+            input.take(0, Vec::from_array([1, 0, 2, 3])),
+            "odd row permutation",
+        );
+        testing::assert_eq(testing::expect_ok(swapped.determinant(), "negative determinant"), -1.0);
+    }
+    let tiny = float64_from_bits(1);
+    let input = diagonal_for_determinant(Vec::from_array([tiny, 1.5, determinant_power(1000)]));
+    // Preserve 1.5 subnormal units until the later scale makes them normal.
+    testing::assert_eq(
+        testing::expect_ok(input.determinant(), "restored precision"),
+        1.5 * determinant_power(-74),
+    );
+}
+
+#[test]
+fn determinant_keeps_final_overflow_subnormal_rounding_and_signed_underflow() -> () {
+    let tiny = float64_from_bits(1);
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    for sign in Vec::from_array([1.0, -1.0]) {
+        let overflow = testing::expect_ok(
+            diagonal_for_determinant(Vec::from_array([sign * maximum, 2.0])).determinant(),
+            "overflow",
+        );
+        testing::assert(math::is_infinite(overflow) && overflow * sign > 0.0);
+        let subnormal = testing::expect_ok(
+            diagonal_for_determinant(Vec::from_array([sign * tiny, 1.5])).determinant(),
+            "subnormal rounding",
+        );
+        testing::assert_eq(subnormal, sign * 2.0 * tiny);
+        let underflow = testing::expect_ok(
+            diagonal_for_determinant(Vec::from_array([sign * tiny, 0.5])).determinant(),
+            "underflow tie",
+        );
+        testing::assert_eq(float64_to_bits(underflow), float64_to_bits(sign * 0.0));
+    }
+    testing::assert_eq(
+        testing::expect_ok(
+            diagonal_for_determinant(
+                Vec::from_array([maximum, determinant_power(-500), determinant_power(500)]),
+            ).determinant(),
+            "maximum determinant",
+        ),
+        maximum,
+    );
+}

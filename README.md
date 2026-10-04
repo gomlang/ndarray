@@ -197,6 +197,10 @@ The following decompositions operate on finite `f64` matrices:
 Factors own snapshots and can solve repeated right-hand sides after the original
 input changes. A 0x0 matrix has determinant one and valid empty factors.
 Decompositions reject nonfinite inputs/intermediates and incompatible RHS shapes.
+Determinants retry their diagonal product with separate binary exponents if an
+intermediate overflows or becomes subnormal. Large and small factors can cancel
+without losing the final finite value; only the final product rounds to zero or
+infinity when it exceeds the `f64` range.
 QR retries overflowing Householder dot products in power-of-two scaled
 coordinates before updating matrix columns or right-hand sides. Finite results
 such as an identity solve with `1e308` observations remain available; actual
