@@ -91,11 +91,6 @@ impl Cholesky {
     }
 
     pub fn slogdet(self: Cholesky) -> f64 {
-        let n = self.lower.dimensions[0];
-        let mut value = 0.0;
-        for index in 0..n {
-            value += 2.0 * math::log(self.lower.data[index * n + index]);
-        }
-        value
+        2.0 * diagonal_slogdet(self.lower, false).1
     }
 }

@@ -89,6 +89,34 @@ fn zeros(count: isize) -> Vec[f64] {
     result
 }
 
+fn diagonal_slogdet(factors: Array[f64], odd: bool) -> (f64, f64) {
+    let n = factors.dimensions[0];
+    let mut sign = if odd {
+        -1.0
+    } else {
+        1.0
+    };
+    let mut logarithm = 0.0;
+    let mut correction = 0.0;
+    for index in 0..n {
+        let value = factors.data[index * n + index];
+        if value < 0.0 {
+            sign = -sign;
+        }
+        let term = math::log(magnitude(value));
+        let next = logarithm + term;
+        // Retain small factors when large positive and negative logs cancel.
+        correction += if magnitude(logarithm) >= magnitude(term) {
+            (logarithm - next) + term
+        } else {
+            (term - next) + logarithm
+        };
+        logarithm = next;
+    }
+    let result = (sign, logarithm + correction);
+    result
+}
+
 fn scaled_diagonal_product(factors: Array[f64], odd: bool) -> f64 {
     let n = factors.dimensions[0];
     let minimum_normal = float64_from_bits(0x0010000000000000);
@@ -314,21 +342,6 @@ impl Lu {
     }
 
     pub fn slogdet(self: Lu) -> (f64, f64) {
-        let n = self.factors.dimensions[0];
-        let mut sign = if self.odd {
-            -1.0
-        } else {
-            1.0
-        };
-        let mut logarithm = 0.0;
-        for index in 0..n {
-            let value = self.factors.data[index * n + index];
-            if value < 0.0 {
-                sign = -sign;
-            }
-            logarithm += math::log(magnitude(value));
-        }
-        let result = (sign, logarithm);
-        result
+        diagonal_slogdet(self.factors, self.odd)
     }
 }

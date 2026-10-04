@@ -1,0 +1,71 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SolveOptions};
+use std::testing;
+
+fn logdet_matrix(diagonal: Vec[f64]) -> Array[f64] {
+    let values = Vec::new();
+    for row in 0..diagonal.len() {
+        for column in 0..diagonal.len() {
+            values.push(
+                if row == column {
+                    diagonal[row]
+                } else {
+                    0.0
+                },
+            );
+        }
+    }
+    testing::expect_ok(
+        Array::from_vec(Vec::from_array([diagonal.len(), diagonal.len()]), values),
+        "diagonal matrix",
+    )
+}
+
+fn logdet_near_one(actual: f64) -> () {
+    // 100-digit Decimal ln(1 + 2^-51), rounded to f64.
+    let expected = float64_from_bits(0x3cbffffffffffffe);
+    if !(actual > expected - 1e-29 && actual < expected + 1e-29) {
+        println("log determinant: " + actual.to_string());
+        testing::fail("log determinant lost the near-one factor");
+    }
+}
+
+#[test]
+fn lu_slogdet_retains_small_logarithms_between_canceling_terms() -> () {
+    let high = 1024.0;
+    let low = 1.0 / 1024.0;
+    let middle = float64_from_bits(0x3ff0000000000002);
+    let options = SolveOptions::standard();
+    for diagonal in[
+        Vec::from_array([high, middle, low]),
+        Vec::from_array([middle, low, high]),
+        Vec::from_array([low, high, middle]),
+    ] {
+        let input = logdet_matrix(diagonal);
+        let factor = testing::expect_ok(input.lu(options), "LU");
+        testing::assert_eq(factor.slogdet().0, 1.0);
+        logdet_near_one(factor.slogdet().1);
+        logdet_near_one(testing::expect_ok(input.slogdet(), "array slogdet").1);
+        let swapped = testing::expect_ok(input.take(0, Vec::from_array([1, 0, 2])), "row swap");
+        let (sign, logarithm) = testing::expect_ok(swapped.slogdet(), "negative determinant");
+        testing::assert_eq(sign, -1.0);
+        logdet_near_one(logarithm);
+    }
+}
+
+#[test]
+fn cholesky_slogdet_retains_small_logarithms_between_canceling_terms() -> () {
+    let high = 1024.0;
+    let low = 1.0 / 1024.0;
+    let middle = float64_from_bits(0x3ff0000000000002);
+    let options = SolveOptions::standard();
+    for diagonal in[
+        Vec::from_array([high, middle, low]),
+        Vec::from_array([middle, low, high]),
+        Vec::from_array([low, high, middle]),
+    ] {
+        let factor = testing::expect_ok(logdet_matrix(diagonal).cholesky(options), "Cholesky");
+        logdet_near_one(factor.slogdet());
+    }
+}

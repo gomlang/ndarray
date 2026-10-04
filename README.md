@@ -207,6 +207,10 @@ Determinants retry their diagonal product with separate binary exponents if an
 intermediate overflows or becomes subnormal. Large and small factors can cancel
 without losing the final finite value; only the final product rounds to zero or
 infinity when it exceeds the `f64` range.
+LU and Cholesky log determinants compensate the sum of diagonal logarithms,
+preserving small factors between canceling large positive and negative terms.
+For example, `diag(1024, 1 + 2^-51, 1/1024)` retains its small nonzero log
+determinant instead of rounding the sum to zero.
 QR retries overflowing Householder dot products in power-of-two scaled
 coordinates before updating matrix columns or right-hand sides. Finite results
 such as an identity solve with `1e308` observations remain available; actual
