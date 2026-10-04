@@ -160,8 +160,10 @@ population standard deviation, and `[1e-200, -1e-200]` has a nonzero one, even
 though their variances cannot be represented as finite nonzero `f64` values.
 `stddev_axes` uses the same stable algorithm and degrees-of-freedom policy for
 strided groups. Nonfinite inputs retain the variance-based NaN policy.
-Norm uses scaling to avoid squaring large raw values. These improve common
-numerical cases without guaranteeing arbitrary-precision results. Extrema choose the first tie or first NaN. NaNs
+Norm uses scaling to avoid squaring large raw values and compensated summation
+to retain many small squared contributions; QR uses the same column-norm routine.
+These improve common numerical cases without guaranteeing arbitrary-precision
+results. Extrema choose the first tie or first NaN. NaNs
 propagate through statistics; `all_close` can optionally equate NaNs and always
 handles equal infinities explicitly. For finite operands, it rescales a comparison
 when both the distance and tolerance overflow, so two overflowing intermediates

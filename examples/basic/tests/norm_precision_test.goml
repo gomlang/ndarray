@@ -1,0 +1,46 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SliceSpec, SolveOptions};
+use std::testing;
+
+fn norm_small_contributions(scale: f64) -> Vec[f64] {
+    let values = Vec::from_array([scale]);
+    for _ in 0..10000 {
+        values.push(scale * 1e-8);
+    }
+    values
+}
+
+#[test]
+fn norm_retains_many_small_squared_contributions_in_either_order() -> () {
+    // Fraction arithmetic and a 100-digit Decimal square root give this f64
+    // for sqrt(1 + 10000 * exact_f64(1e-8)^2).
+    let expected = float64_from_bits(0x3ff00000000008cc);
+    for scale in Vec::from_array([1.0, 1e200, 1e-200]) {
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([10001]), norm_small_contributions(scale)),
+            "mixed magnitudes",
+        );
+        let reversed = testing::expect_ok(
+            input.slice(0, SliceSpec::reverse()),
+            "reversed magnitudes",
+        );
+        for values in Vec::from_array([input, reversed]) {
+            let actual = values.norm() / scale;
+            testing::assert(actual > expected - 1e-15 && actual < expected + 1e-15);
+        }
+    }
+}
+
+#[test]
+fn qr_column_norm_retains_small_tail_energy() -> () {
+    let input = testing::expect_ok(
+        Array::from_vec(Vec::from_array([10001, 1]), norm_small_contributions(1.0)),
+        "tall column",
+    );
+    let factor = testing::expect_ok(input.qr(SolveOptions::standard()), "QR");
+    testing::assert_eq(
+        testing::expect_ok(factor.r().get_flat(0), "column norm"),
+        -float64_from_bits(0x3ff00000000008cc),
+    );
+}
