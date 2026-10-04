@@ -1,0 +1,168 @@
+package ndarray;
+
+use std::math;
+
+// Keep each intermediate's exponent separately: a forward result can exceed
+// f64 even when the subsequent backward solve has a finite result.
+
+struct TriangularValue {
+    fraction: f64,
+    exponent: isize,
+}
+
+fn triangular_scaled(value: f64, exponent: isize) -> TriangularValue {
+    if value == 0.0 {
+        return TriangularValue { fraction: value, exponent: 0 }
+    }
+    let mut value = value;
+    let mut exponent = exponent;
+    let magnitude = if value < 0.0 {
+        -value
+    } else {
+        value
+    };
+    if magnitude < float64_from_bits(0x0010000000000000) {
+        value *= 4503599627370496.0;
+        exponent -= 52;
+    }
+    let bits = float64_to_bits(value);
+    TriangularValue {
+        fraction: float64_from_bits((bits & 0x800fffffffffffff) | 0x3ff0000000000000),
+        exponent: exponent + ((bits >> 52) & 0x7ff).to_isize() - 1023,
+    }
+}
+
+fn triangular_difference(left: TriangularValue, right: TriangularValue) -> TriangularValue {
+    if right.fraction == 0.0 {
+        if left.fraction == 0.0 {
+            return triangular_scaled(left.fraction - right.fraction, 0)
+        }
+        return left
+    }
+    if left.fraction == 0.0 {
+        return TriangularValue { fraction: -right.fraction, exponent: right.exponent }
+    }
+    if left.exponent >= right.exponent {
+        let gap = left.exponent - right.exponent;
+        // Beyond 54 bits the smaller term is below half the narrowest adjacent
+        // spacing, including the binade boundary at a fraction of exactly one.
+        if gap > 54 {
+            return left
+        }
+        let power = float64_from_bits((1023 - gap).to_u64() << 52);
+        triangular_scaled(left.fraction - right.fraction * power, left.exponent)
+    } else {
+        let gap = right.exponent - left.exponent;
+        if gap > 54 {
+            return TriangularValue { fraction: -right.fraction, exponent: right.exponent }
+        }
+        let power = float64_from_bits((1023 - gap).to_u64() << 52);
+        triangular_scaled(left.fraction * power - right.fraction, right.exponent)
+    }
+}
+
+fn triangular_product(left: TriangularValue, right: TriangularValue) -> TriangularValue {
+    triangular_scaled(left.fraction * right.fraction, left.exponent + right.exponent)
+}
+
+fn triangular_quotient(left: TriangularValue, right: TriangularValue) -> TriangularValue {
+    triangular_scaled(left.fraction / right.fraction, left.exponent - right.exponent)
+}
+
+fn triangular_restored(value: TriangularValue) -> f64 {
+    if value.fraction == 0.0 {
+        return value.fraction
+    }
+    if value.exponent > 1023 {
+        value.fraction * float64_from_bits(0x7ff0000000000000)
+    } else if value.exponent < -1075 {
+        value.fraction * 0.0
+    } else if value.exponent < -1022 {
+        // The first scaling is exact and normal; round to subnormal only once.
+        (value.fraction * float64_from_bits((value.exponent + 2045).to_u64() << 52))
+            * float64_from_bits(0x0010000000000000)
+    } else {
+        value.fraction * float64_from_bits((value.exponent + 1023).to_u64() << 52)
+    }
+}
+
+fn solve_triangular_values(
+    factors: Vec[f64],
+    n: isize,
+    columns: isize,
+    values: Vec[TriangularValue],
+    lower: bool,
+    transposed: bool,
+    unit: bool,
+) -> () {
+    for step in 0..n {
+        let row = if lower {
+            step
+        } else {
+            n - 1 - step
+        };
+        for previous_step in 0..step {
+            let previous = if lower {
+                previous_step
+            } else {
+                row + 1 + previous_step
+            };
+            let offset = if transposed {
+                previous * n + row
+            } else {
+                row * n + previous
+            };
+            let factor = triangular_scaled(factors[offset], 0);
+            for column in 0..columns {
+                let target = row * columns + column;
+                values[target] = triangular_difference(
+                    values[target],
+                    triangular_product(factor, values[previous * columns + column]),
+                );
+            }
+        }
+        if !unit {
+            let divisor = triangular_scaled(factors[row * n + row], 0);
+            for column in 0..columns {
+                let target = row * columns + column;
+                values[target] = triangular_quotient(values[target], divisor);
+            }
+        }
+    }
+}
+
+fn retry_triangular_solve(
+    factors: Vec[f64],
+    n: isize,
+    columns: isize,
+    original: Vec[f64],
+    output: Vec[f64],
+    permutation: Option[Vec[isize]],
+    cholesky: bool,
+) -> () {
+    for column in 0..columns {
+        let mut failed = false;
+        for row in 0..n {
+            if !math::is_finite(output[row * columns + column]) {
+                failed = true;
+            }
+        }
+        if failed {
+            // Start from the original observations and leave successful columns
+            // untouched. Independent exponents preserve unrelated tiny values.
+            let values = Vec::with_capacity(n);
+            for row in 0..n {
+                let source = match permutation {
+                    Some(indices) => indices[row],
+                    None => row,
+                };
+                values.push(triangular_scaled(original[source * columns + column], 0));
+            }
+            solve_triangular_values(factors, n, 1, values, true, false, !cholesky);
+            solve_triangular_values(factors, n, 1, values, false, cholesky, false);
+            for row in 0..n {
+                output[row * columns + column] = triangular_restored(values[row]);
+            }
+        }
+    }
+}

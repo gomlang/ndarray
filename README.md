@@ -202,7 +202,19 @@ The following decompositions operate on finite `f64` matrices:
 
 Factors own snapshots and can solve repeated right-hand sides after the original
 input changes. A 0x0 matrix has determinant one and valid empty factors.
-Decompositions reject nonfinite inputs/intermediates and incompatible RHS shapes.
+Decompositions reject nonfinite inputs, incompatible RHS shapes, and unrecoverable
+nonfinite factors or solutions.
+LU and Cholesky solves retry RHS columns whose ordinary substitution produces a
+nonfinite result, carrying each intermediate's binary exponent separately until
+the final solution is restored. For example, `A = 2^1023 * [[1, 1/2], [1/2, 1]]`
+and `b = [MAX_F64, -MAX_F64]` recover the finite solution
+`[4 - 2^-51, -4 + 2^-51]`. Other RHS columns retain their original results,
+and unrelated tiny components are preserved without scaling the entire column.
+This extends the intermediate range while keeping `f64` significand precision;
+it does not fix already finite results affected by underflow, cancellation, or
+ill-conditioning, nor guarantee recovery of every mathematically finite solution.
+Factorization tolerances remain in force, and unrepresentable final results
+still return `NonFinite`.
 Determinants retry their diagonal product with separate binary exponents if an
 intermediate overflows or becomes subnormal. Large and small factors can cancel
 without losing the final finite value; only the final product rounds to zero or

@@ -1,0 +1,141 @@
+package tests;
+
+use ecosystem::ndarray::{Array, ErrorKind, SolveOptions};
+use std::testing;
+
+fn range_array(shape: Vec[isize], values: Vec[f64]) -> Array[f64] {
+    testing::expect_ok(Array::from_vec(shape, values), "range fixture")
+}
+
+fn range_near(actual: f64, expected: f64) -> () {
+    testing::assert(actual > expected - 2e-15 && actual < expected + 2e-15);
+}
+
+#[test]
+fn triangular_lu_recovers_finite_solutions_after_overflow() -> () {
+    let high = float64_from_bits(0x7fe0000000000000);
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    let expected = float64_from_bits(0x400fffffffffffff);
+    for swapped in[false, true] {
+        // [1,-1] is an eigenvector with eigenvalue high/2, so the exact
+        // solution is +/- (4 - 2^-51), despite an overflowing forward result.
+        let matrix = range_array(
+            Vec::from_array([2, 2]),
+            if swapped {
+                Vec::from_array([high / 2.0, high, high, high / 2.0])
+            } else {
+                Vec::from_array([high, high / 2.0, high / 2.0, high])
+            },
+        );
+        let rhs = range_array(
+            Vec::from_array([2]),
+            if swapped {
+                Vec::from_array([-maximum, maximum])
+            } else {
+                Vec::from_array([maximum, -maximum])
+            },
+        );
+        let solution = testing::expect_ok(
+            matrix.solve(rhs, SolveOptions::standard()),
+            "finite LU solution",
+        ).to_vec();
+        range_near(solution[0], expected);
+        range_near(solution[1], -expected);
+    }
+    let matrix = range_array(Vec::from_array([2, 2]), Vec::from_array([high, high, 0.0, 1.0]));
+    let rhs = range_array(Vec::from_array([2]), Vec::from_array([maximum, 2.0]));
+    let options = SolveOptions { absolute_tolerance: 0.0, relative_tolerance: 0.0 };
+    let actual = testing::expect_ok(matrix.solve(rhs, options), "canceling overflowed product").to_vec();
+    // The back-substitution product 2*high overflows, but MAX-2*high
+    // is exactly -2^971 and division by high gives -2^-52.
+    testing::assert_eq(actual[0], -float64_from_bits(0x3cb0000000000000));
+    testing::assert_eq(actual[1], 2.0);
+}
+
+#[test]
+fn triangular_cholesky_recovers_finite_solutions_after_overflow() -> () {
+    let high = float64_from_bits(0x7fe0000000000000);
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    let matrix = range_array(
+        Vec::from_array([2, 2]),
+        Vec::from_array([high, high / 2.0, high / 2.0, high]),
+    );
+    let factor = testing::expect_ok(
+        matrix.cholesky(SolveOptions::standard()),
+        "positive definite factor",
+    );
+    let rhs = range_array(Vec::from_array([2]), Vec::from_array([maximum, -maximum]));
+    let actual = testing::expect_ok(factor.solve(rhs), "finite Cholesky solution").to_vec();
+    let expected = float64_from_bits(0x400fffffffffffff);
+    range_near(actual[0], expected);
+    range_near(actual[1], -expected);
+}
+
+fn check_range_columns(actual: Array[f64], successful: Array[f64]) -> () {
+    let values = actual.to_vec();
+    let preserved = successful.to_vec();
+    let expected = float64_from_bits(0x400fffffffffffff);
+    range_near(values[0], expected);
+    range_near(values[2], -expected);
+    testing::assert_eq(float64_to_bits(values[4]), float64_to_bits(float64_from_bits(1)));
+    for row in 0..3 {
+        testing::assert_eq(float64_to_bits(values[row * 2 + 1]), float64_to_bits(preserved[row]));
+    }
+}
+
+#[test]
+fn triangular_retry_preserves_successful_columns_and_uncoupled_tiny_values() -> () {
+    let high = float64_from_bits(0x7fe0000000000000);
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    let tiny = float64_from_bits(1);
+    let negative_zero = float64_from_bits(0x8000000000000000);
+    let matrix = range_array(
+        Vec::from_array([3, 3]),
+        Vec::from_array([high, high / 2.0, 0.0, high / 2.0, high, 0.0, 0.0, 0.0, 1.0]),
+    );
+    let options = SolveOptions { absolute_tolerance: 0.0, relative_tolerance: 0.0 };
+    let storage = range_array(
+        Vec::from_array([2, 3]),
+        Vec::from_array([maximum, -maximum, tiny, negative_zero, 0.0, -tiny]),
+    );
+    let before = storage.to_vec();
+    let rhs = testing::expect_ok(storage.reversed_axes(), "strided RHS");
+    let successful = range_array(Vec::from_array([3]), Vec::from_array([negative_zero, 0.0, -tiny]));
+    let lu = testing::expect_ok(matrix.lu(options), "LU");
+    let cholesky = testing::expect_ok(matrix.cholesky(options), "Cholesky");
+    let lu_successful = testing::expect_ok(lu.solve(successful), "successful LU column");
+    let cholesky_successful = testing::expect_ok(
+        cholesky.solve(successful),
+        "successful Cholesky column",
+    );
+    for _ in 0..2 {
+        check_range_columns(testing::expect_ok(lu.solve(rhs), "mixed LU RHS"), lu_successful);
+        check_range_columns(
+            testing::expect_ok(cholesky.solve(rhs), "mixed Cholesky RHS"),
+            cholesky_successful,
+        );
+    }
+    let after = storage.to_vec();
+    for index in 0..before.len() {
+        testing::assert_eq(float64_to_bits(after[index]), float64_to_bits(before[index]));
+    }
+}
+
+#[test]
+fn triangular_retry_still_rejects_unrepresentable_solutions() -> () {
+    let matrix = range_array(Vec::from_array([1, 1]), Vec::from_array([0.25]));
+    let rhs = range_array(
+        Vec::from_array([1]),
+        Vec::from_array([float64_from_bits(0x7fefffffffffffff)]),
+    );
+    let options = SolveOptions::standard();
+    testing::assert_eq(
+        testing::expect_err(matrix.solve(rhs, options), "LU result overflow").kind,
+        ErrorKind::NonFinite,
+    );
+    let cholesky = testing::expect_ok(matrix.cholesky(options), "Cholesky");
+    testing::assert_eq(
+        testing::expect_err(cholesky.solve(rhs), "Cholesky result overflow").kind,
+        ErrorKind::NonFinite,
+    );
+}

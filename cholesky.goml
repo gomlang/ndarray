@@ -86,7 +86,21 @@ impl Cholesky {
                 output[row * columns + column] /= self.lower.data[row * n + row];
             }
         }
-        finite_values(output)?;
+        match finite_values(output) {
+            Ok(_) => (),
+            Err(_) => {
+                retry_triangular_solve(
+                    self.lower.data,
+                    n,
+                    columns,
+                    rhs.to_vec(),
+                    output,
+                    None,
+                    true,
+                );
+                finite_values(output)?;
+            },
+        }
         Result::Ok(owned(rhs.dimensions, output, limits))
     }
 

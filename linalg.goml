@@ -314,7 +314,21 @@ impl Lu {
                 output[row * columns + column] /= self.factors.data[row * n + row];
             }
         }
-        finite_values(output)?;
+        match finite_values(output) {
+            Ok(_) => (),
+            Err(_) => {
+                retry_triangular_solve(
+                    self.factors.data,
+                    n,
+                    columns,
+                    original,
+                    output,
+                    Some(self.permutation),
+                    false,
+                );
+                finite_values(output)?;
+            },
+        }
         Result::Ok(owned(rhs.dimensions, output, limits))
     }
 
