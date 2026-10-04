@@ -134,8 +134,9 @@ the same element type; conversion uses `map`.
 | `is_finite`, `is_nan`, `equal`, `less` | Boolean masks; binary comparisons broadcast |
 | `all_close(other, relative, absolute, equal_nan)` | Broadcast tolerance comparison |
 
-`linspace` retains constant endpoints exactly and scales subnormal endpoint pairs
-before interpolation, avoiding premature underflow of their weighted terms.
+`linspace` retains constant endpoints exactly, keeps samples in monotonic order
+within the endpoint interval, and scales subnormal endpoint pairs before
+interpolation to avoid premature underflow of their weighted steps.
 
 Empty sums/products return zero/one. An actual empty group has no mean or
 extremum and returns `Empty`; variance requires `0 <= ddof < group_size`.

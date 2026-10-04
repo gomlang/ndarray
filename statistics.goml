@@ -179,6 +179,39 @@ pub fn linspace(start: f64, end: f64, count: isize, endpoint: bool) -> Result[Ar
     Array::[f64]::linspace(start, end, count, endpoint)
 }
 
+fn interpolate(start: f64, end: f64, weight: f64) -> f64 {
+    let value = if magnitude(start) < float64_from_bits(0x0010000000000000)
+        && magnitude(end) < float64_from_bits(0x0010000000000000) {
+        // Defer rounding subnormal steps until after interpolation.
+        let scale = 4503599627370496.0;
+        let first = start * scale;
+        (first + weight * (end * scale - first)) / scale
+    } else if start >= 0.0 && end >= 0.0 || start <= 0.0 && end <= 0.0 {
+        // A same-sign difference is finite, and its single weighted term
+        // changes monotonically even when the endpoints are adjacent floats.
+        start + weight * (end - start)
+    } else {
+        (1.0 - weight) * start + weight * end
+    };
+    let lower = if start < end {
+        start
+    } else {
+        end
+    };
+    let upper = if start < end {
+        end
+    } else {
+        start
+    };
+    if value < lower {
+        lower
+    } else if value > upper {
+        upper
+    } else {
+        value
+    }
+}
+
 impl Array[f64] {
     pub fn linspace(start: f64, end: f64, count: isize, endpoint: bool) -> Result[Array[f64], Error] {
         if !math::is_finite(start) || !math::is_finite(end) {
@@ -209,13 +242,8 @@ impl Array[f64] {
                     end
                 } else if start == end {
                     start
-                } else if magnitude(start) < float64_from_bits(0x0010000000000000)
-                    && magnitude(end) < float64_from_bits(0x0010000000000000) {
-                    // Defer rounding subnormal products until after interpolation.
-                    let scale = 4503599627370496.0;
-                    ((1.0 - weight) * (start * scale) + weight * (end * scale)) / scale
                 } else {
-                    (1.0 - weight) * start + weight * end
+                    interpolate(start, end, weight)
                 },
             );
         }

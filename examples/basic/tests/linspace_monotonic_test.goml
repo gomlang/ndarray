@@ -1,0 +1,41 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::testing;
+
+#[test]
+fn linspace_keeps_nearby_endpoints_in_monotonic_order() -> () {
+    let a = float64_from_bits(0x3ff0000000000001);
+    let b = float64_from_bits(0x3ff0000000000002);
+    for sign in Vec::from_array([1.0, -1.0]) {
+        for reverse in Vec::from_array([false, true]) {
+            let start = sign
+                * if reverse {
+                    b
+                } else {
+                    a
+                };
+            let end = sign
+                * if reverse {
+                    a
+                } else {
+                    b
+                };
+            let actual = testing::expect_ok(
+                Array::linspace(start, end, 6, true),
+                "adjacent endpoints",
+            ).to_vec();
+            // The ideal fractional-ULP steps are 0, 0.2, 0.4, 0.6, 0.8, 1.
+            for index in 0..6 {
+                testing::assert_eq(
+                    actual[index],
+                    if index < 3 {
+                        start
+                    } else {
+                        end
+                    },
+                );
+            }
+        }
+    }
+}
