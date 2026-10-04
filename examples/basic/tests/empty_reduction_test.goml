@@ -1,0 +1,93 @@
+package tests;
+
+use ecosystem::ndarray::{Array, Error, ErrorKind, Limits};
+use std::testing;
+
+#[test]
+fn reductions_with_no_output_groups_do_not_allocate_or_limit_unused_groups() -> () {
+    let limits = Limits { max_rank: 3, max_elements: 0 };
+    let input = testing::expect_ok(
+        Array::full_with_limits(Vec::from_array([0, 9223372036854775807, 2]), 1.0, limits),
+        "empty array with large dimensions",
+    );
+    let calls = Ref::new(0);
+    let reduced: Array[isize] = testing::expect_ok(
+        input.reduce_axes(
+            Vec::from_array([1, 2]),
+            false,
+            |values| {
+                calls.set(calls.get() + 1);
+                Result::Ok(values.len())
+            },
+        ),
+        "no groups to reduce",
+    );
+    testing::assert_eq(calls.get(), 0);
+    testing::assert(reduced.shape() == Vec::from_array([0]));
+    testing::assert(reduced.is_empty());
+    testing::assert_eq(reduced.limits().max_elements, 0);
+    let mean = testing::expect_ok(
+        input.mean_axes(Vec::from_array([-2, -1]), true),
+        "no mean groups",
+    );
+    testing::assert(mean.shape() == Vec::from_array([0, 1, 1]));
+    testing::assert(mean.is_empty());
+    let deviation = testing::expect_ok(
+        input.stddev_axes(Vec::from_array([1, 2]), false, 0),
+        "no deviation groups",
+    );
+    testing::assert(deviation.is_empty());
+    testing::assert_eq(
+        testing::expect_err(
+            input.stddev_axes(Vec::from_array([1, 2]), false, -1),
+            "negative degrees of freedom",
+        ).kind,
+        ErrorKind::Arithmetic,
+    );
+    testing::assert_eq(
+        testing::expect_err(
+            input.sum_axes(Vec::from_array([0]), false),
+            "real output exceeds limit",
+        ).kind,
+        ErrorKind::Limit,
+    );
+    testing::assert_eq(
+        testing::expect_err(
+            input.sum_axes(Vec::from_array([1, 1]), false),
+            "duplicate axes still rejected",
+        ).kind,
+        ErrorKind::Axis,
+    );
+}
+
+#[test]
+fn existing_empty_groups_still_invoke_reducers_and_preserve_errors() -> () {
+    let input: Array[f64] = testing::expect_ok(
+        Array::zeros(Vec::from_array([2, 0])),
+        "two empty groups",
+    );
+    let calls = Ref::new(0);
+    let lengths: Array[isize] = testing::expect_ok(
+        input.reduce_axes(
+            Vec::from_array([1]),
+            false,
+            |values| {
+                calls.set(calls.get() + 1);
+                Result::Ok(values.len())
+            },
+        ),
+        "empty group lengths",
+    );
+    testing::assert_eq(calls.get(), 2);
+    testing::assert(lengths.to_vec() == Vec::from_array([0, 0]));
+    testing::assert_eq(
+        testing::expect_err(input.mean_axes(Vec::from_array([1]), false), "actual empty mean").kind,
+        ErrorKind::Empty,
+    );
+    let failed: Result[Array[isize], Error] = input.reduce_axes(
+        Vec::from_array([1]),
+        false,
+        |_| Result::Err(Error::new(ErrorKind::Arithmetic, "callback failure")),
+    );
+    testing::assert_eq(testing::expect_err(failed, "callback error").kind, ErrorKind::Arithmetic);
+}

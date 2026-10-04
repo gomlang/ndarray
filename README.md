@@ -136,7 +136,9 @@ the same element type; conversion uses `map`.
 
 Empty sums/products return zero/one. An actual empty group has no mean or
 extremum and returns `Empty`; variance requires `0 <= ddof < group_size`.
-An output with no groups is empty without invoking a reduction. Empty axis lists
+An output with no groups is empty without invoking a reduction or checking the
+size of an unused inner group, even when those dimensions exceed the element
+budget. Output dimensions and axes are still checked. Empty axis lists
 reduce each element as a singleton; sum/product simply copy. Axes may appear in
 any order but cannot repeat. Custom groups traverse reduced axes in their
 original axis order, with the last axis varying fastest.

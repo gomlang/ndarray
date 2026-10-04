@@ -88,7 +88,12 @@ impl[T] Array[T] {
             }
         }
         let groups = shape_size(outer_shape, self.limits)?;
-        let count = shape_size(inner_shape, self.limits)?;
+        // An empty output has no working groups to allocate or traverse.
+        let count = if groups == 0 {
+            0
+        } else {
+            shape_size(inner_shape, self.limits)?
+        };
         let output = Vec::with_capacity(groups);
         for group in 0..groups {
             let outer = coordinates(group, outer_shape);
