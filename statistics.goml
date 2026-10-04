@@ -58,11 +58,19 @@ fn scaled_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
 }
 
 fn normalized_variance(values: Slice[f64], ddof: isize, scale: f64) -> f64 {
+    let origin = values[0];
     let mut mean = 0.0;
     let mut squares = 0.0;
     let mut count = 0;
     for original in values {
-        let value = original / scale;
+        // Center before scaling so a large common offset cannot round away
+        // the spread. Only scale first when the subtraction itself overflows.
+        let difference = original - origin;
+        let value = if math::is_finite(difference) {
+            difference / scale
+        } else {
+            original / scale - origin / scale
+        };
         count += 1;
         let delta = value - mean;
         mean += delta / count_float(count);

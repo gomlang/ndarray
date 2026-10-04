@@ -1,0 +1,68 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SliceSpec};
+use std::math;
+use std::testing;
+
+#[test]
+fn variance_preserves_small_spread_around_a_large_offset() -> () {
+    for offset in Vec::from_array([1e16, -1e16]) {
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2]), Vec::from_array([offset, offset + 2.0])),
+            "offset pair",
+        );
+        for values in Vec::from_array(
+            [input, testing::expect_ok(input.slice(0, SliceSpec::reverse()), "reversed pair")],
+        ) {
+            // Translation does not change the variance of [0, 2]. The exact
+            // midpoint is not representable at this offset, but the spread is.
+            testing::assert_eq(testing::expect_ok(values.variance(0), "population variance"), 1.0);
+            testing::assert_eq(testing::expect_ok(values.variance(1), "sample variance"), 2.0);
+            testing::assert_eq(testing::expect_ok(values.stddev(0), "population deviation"), 1.0);
+            testing::assert_eq(
+                testing::expect_ok(values.stddev(1), "sample deviation"),
+                math::sqrt(2.0),
+            );
+        }
+    }
+    let matrix = testing::expect_ok(
+        Array::from_vec(
+            Vec::from_array([2, 2]),
+            Vec::from_array([1e16, 1e16 + 2.0, -1e16, -1e16 + 2.0]),
+        ),
+        "offset rows",
+    );
+    let transposed = testing::expect_ok(matrix.reversed_axes(), "strided columns");
+    let variances = testing::expect_ok(
+        transposed.variance_axes(Vec::from_array([0]), true, 0),
+        "strided variances",
+    );
+    testing::assert(variances.shape() == Vec::from_array([1, 2]));
+    testing::assert(variances.to_vec() == Vec::from_array([1.0, 1.0]));
+    let deviations = testing::expect_ok(
+        transposed.stddev_axes(Vec::from_array([0]), false, 0),
+        "strided deviations",
+    );
+    testing::assert(deviations.to_vec() == Vec::from_array([1.0, 1.0]));
+}
+
+#[test]
+fn variance_scaling_preserves_the_spread_between_adjacent_large_values() -> () {
+    let high = float64_from_bits(0x7fefffffffffffff);
+    let low = float64_from_bits(0x7feffffffffffffe);
+    // The exact population deviation of two observations is half their gap.
+    let expected = (high - low) / 2.0;
+    for values in Vec::from_array(
+        [Vec::from_array([high, low]), Vec::from_array([low, high]), Vec::from_array([-high, -low])],
+    ) {
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2]), values),
+            "large adjacent values",
+        );
+        let actual = testing::expect_ok(input.stddev(0), "finite deviation");
+        testing::assert(actual / expected > 0.999999999999 && actual / expected < 1.000000000001);
+        testing::assert(
+            math::is_infinite(testing::expect_ok(input.variance(0), "overflowing variance")),
+        );
+    }
+}

@@ -145,9 +145,11 @@ original axis order, with the last axis varying fastest.
 
 Floating sums use Neumaier compensation; `f32` sums accumulate in `f64` before
 narrowing. Mean retries with scaled values when a finite input's sum overflows.
-Variance uses Welford updates and retries in scaled coordinates when finite inputs
-produce a nonfinite intermediate, avoiding spurious negative infinity/NaN and
-recovering finite variances when the unnormalized sum of squares overflows.
+Variance centers observations on the first value before Welford updates,
+preserving small spreads around large offsets such as `[1e16, 1e16 + 2]`.
+It retries in scaled coordinates when finite inputs produce a nonfinite
+intermediate, avoiding spurious negative infinity/NaN and recovering finite
+variances when the unnormalized sum of squares overflows.
 Standard deviation computes the square root before restoring scale when variance
 is subnormal, underflows to zero or overflows. This also avoids amplifying the
 rounding error of a positive subnormal variance: `[2e-162, -2e-162]` retains
