@@ -7,6 +7,70 @@ pub struct Qr {
     tau: Vec[f64],
 }
 
+fn reflected_value(value: f64, factor: f64, dot: f64, scale: f64) -> f64 {
+    let change = factor * dot;
+    if magnitude(change) < float64_from_bits(0x0010000000000000) {
+        // Restore the scale before multiplying a tiny reflector component so
+        // a subnormal product does not lose precision in scaled coordinates.
+        value - (factor * scale) * dot
+    } else {
+        (value / scale - change) * scale
+    }
+}
+
+fn apply_householder(
+    factors: Vec[f64],
+    factor_columns: isize,
+    target: Vec[f64],
+    target_columns: isize,
+    first: isize,
+    rows: isize,
+    column: isize,
+    coefficient: f64,
+) -> () {
+    let leading = first * target_columns + column;
+    let mut dot = target[leading];
+    for row in first + 1..rows {
+        dot += factors[row * factor_columns + first] * target[row * target_columns + column];
+    }
+    dot *= coefficient;
+    if math::is_finite(dot) {
+        target[leading] -= dot;
+        for row in first + 1..rows {
+            target[row * target_columns + column] -= factors[row * factor_columns + first] * dot;
+        }
+    } else {
+        // The reflector coefficient can overflow the dot product even when every
+        // reflected component fits. Retry in power-of-two scaled coordinates.
+        let mut largest = magnitude(target[leading]);
+        for row in first + 1..rows {
+            if factors[row * factor_columns + first] != 0.0 {
+                let value = magnitude(target[row * target_columns + column]);
+                if value > largest {
+                    largest = value;
+                }
+            }
+        }
+        let scale = float64_from_bits(float64_to_bits(largest) & 0x7ff0000000000000);
+        let mut scaled_dot = target[leading] / scale;
+        for row in first + 1..rows {
+            let factor = factors[row * factor_columns + first];
+            if factor != 0.0 {
+                scaled_dot += factor * (target[row * target_columns + column] / scale);
+            }
+        }
+        scaled_dot *= coefficient;
+        target[leading] = reflected_value(target[leading], 1.0, scaled_dot, scale);
+        for row in first + 1..rows {
+            let factor = factors[row * factor_columns + first];
+            if factor != 0.0 {
+                let index = row * target_columns + column;
+                target[index] = reflected_value(target[index], factor, scaled_dot, scale);
+            }
+        }
+    }
+}
+
 impl Array[f64] {
     pub fn qr(self: Array[f64], options: SolveOptions) -> Result[Qr, Error] {
         let (rows, columns, data) = matrix_values(self, false)?;
@@ -48,15 +112,7 @@ impl Array[f64] {
             }
             data[k * columns + k] = beta;
             for column in k + 1..columns {
-                let mut dot = data[k * columns + column];
-                for row in k + 1..rows {
-                    dot += data[row * columns + k] * data[row * columns + column];
-                }
-                dot *= coefficient;
-                data[k * columns + column] -= dot;
-                for row in k + 1..rows {
-                    data[row * columns + column] -= data[row * columns + k] * dot;
-                }
+                apply_householder(data, columns, data, columns, k, rows, column, coefficient);
             }
             finite_values(data)?;
         }
@@ -83,15 +139,16 @@ impl Qr {
         while k > 0 {
             k -= 1;
             for column in 0..columns {
-                let mut dot = data[k * columns + column];
-                for row in k + 1..rows {
-                    dot += self.factors.data[row * columns + k] * data[row * columns + column];
-                }
-                dot *= self.tau[k];
-                data[k * columns + column] -= dot;
-                for row in k + 1..rows {
-                    data[row * columns + column] -= self.factors.data[row * columns + k] * dot;
-                }
+                apply_householder(
+                    self.factors.data,
+                    columns,
+                    data,
+                    columns,
+                    k,
+                    rows,
+                    column,
+                    self.tau[k],
+                );
             }
         }
         owned(self.factors.dimensions, data, self.factors.limits)
@@ -121,15 +178,7 @@ impl Qr {
         let _ = shape_size(shape, limits)?;
         for k in 0..columns {
             for j in 0..count {
-                let mut dot = data[k * count + j];
-                for row in k + 1..rows {
-                    dot += self.factors.data[row * columns + k] * data[row * count + j];
-                }
-                dot *= self.tau[k];
-                data[k * count + j] -= dot;
-                for row in k + 1..rows {
-                    data[row * count + j] -= self.factors.data[row * columns + k] * dot;
-                }
+                apply_householder(self.factors.data, columns, data, count, k, rows, j, self.tau[k]);
             }
         }
         let result = data.slice(0, columns * count).to_vec();

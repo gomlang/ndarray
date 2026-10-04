@@ -193,6 +193,10 @@ The following decompositions operate on finite `f64` matrices:
 Factors own snapshots and can solve repeated right-hand sides after the original
 input changes. A 0x0 matrix has determinant one and valid empty factors.
 Decompositions reject nonfinite inputs/intermediates and incompatible RHS shapes.
+QR retries overflowing Householder dot products in power-of-two scaled
+coordinates before updating matrix columns or right-hand sides. Finite results
+such as an identity solve with `1e308` observations remain available; actual
+overflow in a factor or solution still returns `NonFinite`.
 
 `SolveOptions::standard()` uses absolute tolerance zero and relative tolerance
 `1e-12`. The cutoff is `absolute + relative * max(abs(input))`. LU compares pivot

@@ -1,0 +1,133 @@
+package tests;
+
+use ecosystem::ndarray::{Array, ErrorKind, SolveOptions};
+use std::testing;
+
+#[test]
+fn qr_identity_solves_large_rhs_without_losing_uncoupled_tiny_values() -> () {
+    let identity: Array[f64] = testing::expect_ok(Array::eye(2, 2, 0), "identity");
+    let factor = testing::expect_ok(identity.qr(SolveOptions::standard()), "identity QR");
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    let tiny = float64_from_bits(1);
+    let values = testing::expect_ok(
+        Array::from_vec(
+            Vec::from_array([2, 2]),
+            Vec::from_array([maximum, tiny, -maximum, 2.0 * tiny]),
+        ),
+        "right hand sides",
+    );
+    let rhs = testing::expect_ok(values.reversed_axes(), "strided right hand sides");
+    let solution = testing::expect_ok(factor.solve(rhs), "finite identity solution");
+    testing::assert(solution.to_vec() == rhs.to_vec());
+    testing::assert(values.to_vec() == Vec::from_array([maximum, tiny, -maximum, 2.0 * tiny]));
+    let vector = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, -1e308])),
+        "vector rhs",
+    );
+    testing::assert(
+        testing::expect_ok(
+            identity.least_squares(vector, SolveOptions::standard()),
+            "large least squares solution",
+        ).to_vec()
+            == vector.to_vec(),
+    );
+}
+
+#[test]
+fn qr_reflections_preserve_finite_large_columns_and_reject_actual_overflow() -> () {
+    let options = SolveOptions { absolute_tolerance: 0.0, relative_tolerance: 0.0 };
+    for values in Vec::from_array(
+        [Vec::from_array([1.0, 1e308, 0.0, 1.0]), Vec::from_array([3.0, 1e308, 4.0, 1e308])],
+    ) {
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2, 2]), values),
+            "large matrix",
+        );
+        let factor = testing::expect_ok(input.qr(options), "finite factors");
+        let reconstructed = testing::expect_ok(factor.q().matmul(factor.r()), "QR reconstruction");
+        testing::assert(
+            testing::expect_ok(
+                input.all_close(reconstructed, 1e-14, 1e-14, false),
+                "reconstructed matrix",
+            ),
+        );
+        let identity: Array[f64] = testing::expect_ok(Array::eye(2, 2, 0), "identity");
+        let orthogonal = testing::expect_ok(
+            testing::expect_ok(factor.q().reversed_axes(), "Q transpose").matmul(factor.q()),
+            "Q transpose Q",
+        );
+        testing::assert(
+            testing::expect_ok(identity.all_close(orthogonal, 1e-14, 1e-14, false), "orthogonal Q"),
+        );
+    }
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    let overflowing = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 1]), Vec::from_array([maximum, maximum])),
+        "overflowing norm",
+    );
+    testing::assert_eq(
+        testing::expect_err(overflowing.qr(options), "unrepresentable norm").kind,
+        ErrorKind::NonFinite,
+    );
+    let half = testing::expect_ok(
+        Array::from_vec(Vec::from_array([1, 1]), Vec::from_array([0.5])),
+        "half",
+    );
+    let rhs = testing::expect_ok(
+        Array::from_vec(Vec::from_array([1]), Vec::from_array([maximum])),
+        "maximum rhs",
+    );
+    testing::assert_eq(
+        testing::expect_err(half.least_squares(rhs, options), "unrepresentable solution").kind,
+        ErrorKind::NonFinite,
+    );
+}
+
+#[test]
+fn qr_large_least_squares_matches_the_exact_solution() -> () {
+    let input = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 1]), Vec::from_array([3.0, 4.0])),
+        "single column",
+    );
+    let rhs = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, 1e308])),
+        "large observations",
+    );
+    // The exact minimizer is (3 + 4) * 1e308 / (3^2 + 4^2).
+    let expected = testing::expect_ok(
+        Array::from_vec(Vec::from_array([1]), Vec::from_array([2.8e307])),
+        "exact solution",
+    );
+    let actual = testing::expect_ok(
+        input.least_squares(rhs, SolveOptions::standard()),
+        "finite least squares solution",
+    );
+    testing::assert(
+        testing::expect_ok(expected.all_close(actual, 1e-14, 0.0, false), "exact minimizer"),
+    );
+}
+
+#[test]
+fn qr_scaled_reflections_preserve_subnormal_coupling() -> () {
+    let options = SolveOptions { absolute_tolerance: 0.0, relative_tolerance: 0.0 };
+    for coefficient in Vec::from_array([float64_from_bits(2), -float64_from_bits(2)]) {
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2, 2]), Vec::from_array([1.0, 0.0, coefficient, 1.0])),
+            "nearly identity matrix",
+        );
+        let rhs = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, 0.0])),
+            "large rhs",
+        );
+        // The triangular equations give x[0] = b[0], x[1] = -a[1,0] * b[0].
+        // A subnormal coefficient still has a significant effect on x[1].
+        let expected = testing::expect_ok(
+            Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, -(coefficient * 1e308)])),
+            "exact triangular solution",
+        );
+        let actual = testing::expect_ok(input.least_squares(rhs, options), "finite solution");
+        testing::assert(
+            testing::expect_ok(expected.all_close(actual, 1e-14, 0.0, false), "subnormal coupling"),
+        );
+    }
+}
