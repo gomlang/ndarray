@@ -1,0 +1,62 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::testing;
+
+#[test]
+fn linspace_preserves_constant_subnormal_intervals() -> () {
+    for bits in Vec::from_array([1, 3, 0x000fffffffffffff]) {
+        for sign in Vec::from_array([1.0, -1.0]) {
+            let value = sign * float64_from_bits(bits);
+            for endpoint in Vec::from_array([true, false]) {
+                let actual = testing::expect_ok(
+                    Array::linspace(value, value, 11, endpoint),
+                    "constant subnormal interval",
+                );
+                for entry in actual.to_vec() {
+                    testing::assert_eq(entry, value);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn linspace_rounds_subnormal_midpoints_after_interpolation() -> () {
+    // In minimum-subnormal units, the exact midpoints are 1.5, 2.5,
+    // and 3.5; round-to-even gives 2, 2, and 4 respectively.
+    for pair in Vec::from_array([(1, 2, 2), (2, 3, 2), (3, 4, 4)]) {
+        for sign in Vec::from_array([1.0, -1.0]) {
+            for reverse in Vec::from_array([false, true]) {
+                let a = sign * float64_from_bits(pair.0);
+                let b = sign * float64_from_bits(pair.1);
+                let start = if reverse {
+                    b
+                } else {
+                    a
+                };
+                let end = if reverse {
+                    a
+                } else {
+                    b
+                };
+                for endpoint in Vec::from_array([true, false]) {
+                    let count = if endpoint {
+                        3
+                    } else {
+                        2
+                    };
+                    let actual = testing::expect_ok(
+                        Array::linspace(start, end, count, endpoint),
+                        "subnormal midpoint",
+                    ).to_vec();
+                    testing::assert_eq(actual[0], start);
+                    testing::assert_eq(actual[1], sign * float64_from_bits(pair.2));
+                    if endpoint {
+                        testing::assert_eq(actual[2], end);
+                    }
+                }
+            }
+        }
+    }
+}

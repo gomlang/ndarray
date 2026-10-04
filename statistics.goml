@@ -207,6 +207,13 @@ impl Array[f64] {
                     start
                 } else if endpoint && index == count - 1 {
                     end
+                } else if start == end {
+                    start
+                } else if magnitude(start) < float64_from_bits(0x0010000000000000)
+                    && magnitude(end) < float64_from_bits(0x0010000000000000) {
+                    // Defer rounding subnormal products until after interpolation.
+                    let scale = 4503599627370496.0;
+                    ((1.0 - weight) * (start * scale) + weight * (end * scale)) / scale
                 } else {
                     (1.0 - weight) * start + weight * end
                 },
