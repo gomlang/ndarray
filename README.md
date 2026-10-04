@@ -157,7 +157,11 @@ strided groups. Nonfinite inputs retain the variance-based NaN policy.
 Norm uses scaling to avoid squaring large raw values. These improve common
 numerical cases without guaranteeing arbitrary-precision results. Extrema choose the first tie or first NaN. NaNs
 propagate through statistics; `all_close` can optionally equate NaNs and always
-handles equal infinities explicitly. Sum/dot rounding can differ from NumPy or
+handles equal infinities explicitly. For finite operands, it rescales a comparison
+when both the distance and tolerance overflow, so two overflowing intermediates
+do not incorrectly establish closeness. Relative tolerance scales the right
+operand, as in `abs(a - b) <= absolute + relative * abs(b)`.
+Sum/dot rounding can differ from NumPy or
 between execution modes; use appropriate tolerances.
 
 ## Matrix computation

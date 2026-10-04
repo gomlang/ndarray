@@ -1,0 +1,53 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::testing;
+
+#[test]
+fn all_close_distinguishes_overflowing_finite_distances_and_tolerances() -> () {
+    let left = Array::scalar(1.7e308);
+    let right = Array::scalar(-1e308);
+    // The distance is 2.7e308, greater than either tolerance of 2e308.
+    testing::assert(
+        !testing::expect_ok(left.all_close(right, 2.0, 0.0, false), "relative overflow"),
+    );
+    testing::assert(!testing::expect_ok(left.all_close(right, 1.0, 1e308, false), "sum overflow"));
+    testing::assert(testing::expect_ok(left.all_close(right, 3.0, 0.0, false), "larger tolerance"));
+    testing::assert(
+        testing::expect_ok(left.all_close(right, 2.0, 1e308, false), "combined tolerance"),
+    );
+    // Relative tolerance scales the right operand, so this comparison is asymmetric.
+    testing::assert(testing::expect_ok(right.all_close(left, 2.0, 0.0, false), "reverse operands"));
+    testing::assert(
+        testing::expect_ok(left.all_close(left.negate(), 2.0, 0.0, false), "exact boundary"),
+    );
+}
+
+#[test]
+fn all_close_overflow_comparison_preserves_broadcasting_and_special_values() -> () {
+    let values = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([1e308, 1.7e308])),
+        "values",
+    );
+    let reference = Array::scalar(-1e308);
+    testing::assert(!testing::expect_ok(values.all_close(reference, 2.5, 0.0, false), "broadcast"));
+    testing::assert(
+        testing::expect_ok(values.all_close(reference, 3.0, 0.0, false), "broadcast close"),
+    );
+    let infinity = Array::scalar(float64_from_bits(0x7ff0000000000000));
+    testing::assert(
+        testing::expect_ok(infinity.all_close(infinity, 0.0, 0.0, false), "equal infinities"),
+    );
+    testing::assert(
+        !testing::expect_ok(
+            infinity.all_close(reference, 3.0, 1e308, false),
+            "finite versus infinity",
+        ),
+    );
+    testing::assert(
+        !testing::expect_ok(
+            infinity.all_close(infinity.negate(), 3.0, 1e308, false),
+            "opposite infinities",
+        ),
+    );
+}

@@ -369,7 +369,17 @@ impl Array[f64] {
                     } else if !math::is_finite(a) || !math::is_finite(b) {
                         false
                     } else {
-                        magnitude(a - b) <= absolute + relative * magnitude(b)
+                        let distance = magnitude(a - b);
+                        let tolerance = absolute + relative * magnitude(b);
+                        if math::is_infinite(distance) && math::is_infinite(tolerance) {
+                            // Both operands are finite; comparing two overflows would
+                            // accept every distance, even one exceeding the tolerance.
+                            // Halving the operands makes their distance representable.
+                            magnitude(a * 0.5 - b * 0.5)
+                                <= absolute * 0.5 + (relative * 0.5) * magnitude(b)
+                        } else {
+                            distance <= tolerance
+                        }
                     }
                 },
             )?.all(),
