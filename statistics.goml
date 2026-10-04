@@ -10,20 +10,40 @@ fn mean_values(values: Slice[f64]) -> Result[f64, Error] {
     if math::is_finite(total) {
         return Result::Ok(total / count_float(values.len()))
     }
-    let mut scale = 0.0;
     for value in values {
         if !math::is_finite(value) {
             return Result::Ok(total / count_float(values.len()))
         }
-        if magnitude(value) > scale {
-            scale = magnitude(value);
-        }
+    }
+    let count = count_float(values.len());
+    // Scaling by sample count bounds the sum without erasing small terms
+    // that remain after cancellation between extremely large observations.
+    let mut scale = 2.0;
+    while scale < 2.0 * count {
+        scale *= 2.0;
     }
     let normalized = Vec::with_capacity(values.len());
+    let residuals = Vec::new();
     for value in values {
-        normalized.push(value / scale);
+        let scaled = value / scale;
+        normalized.push(scaled);
+        let residual = value - scaled * scale;
+        if residual != 0.0 {
+            residuals.push(residual);
+        }
     }
-    Result::Ok((compensated_sum(normalized.as_slice()) / count_float(values.len())) * scale)
+    let (sum, correction) = compensated_sum_parts(normalized.as_slice());
+    let restored = (sum + correction) * scale;
+    // Restore tiny sums and scaling underflow before division. For large sums,
+    // divide the compensation separately to avoid premature restoration overflow.
+    let mean = if math::is_finite(restored) {
+        let corrected = restored + compensated_sum(residuals.as_slice());
+        corrected / count
+    } else {
+        let divided = sum / count + correction / count;
+        divided * scale
+    };
+    Result::Ok(mean)
 }
 
 fn variance_values(values: Slice[f64], ddof: isize) -> Result[f64, Error] {

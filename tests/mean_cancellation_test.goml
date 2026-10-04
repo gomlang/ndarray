@@ -1,0 +1,56 @@
+package tests;
+
+use ecosystem::ndarray::{Array};
+use std::testing;
+
+#[test]
+fn overflowing_mean_sums_preserve_small_cancellation_remainders() -> () {
+    let tiny = float64_from_bits(1);
+    for residual in Vec::from_array([1e-100, -1e-100, 5.0 * tiny, -5.0 * tiny]) {
+        let values = Vec::from_array([1e308, 1e308, -1e308, -1e308, residual]);
+        let input = testing::expect_ok(
+            Array::from_vec(Vec::from_array([5]), values),
+            "cancellation",
+        );
+        testing::assert_eq(
+            testing::expect_ok(input.mean(), "mean with finite remainder"),
+            residual / 5.0,
+        );
+    }
+    let values = Vec::from_array([1e308, 1e308, -1e308, -1e308]);
+    for _ in 0..8 {
+        values.push(tiny);
+    }
+    let input = testing::expect_ok(
+        Array::from_vec(Vec::from_array([12]), values),
+        "subnormal remainder",
+    );
+    // The exact mean is 8/12 of the minimum subnormal, which rounds up.
+    testing::assert_eq(testing::expect_ok(input.mean(), "rounded subnormal mean"), tiny);
+    let matrix = testing::expect_ok(
+        Array::from_vec(
+            Vec::from_array([2, 5]),
+            Vec::from_array(
+                [1e308, 1e308, -1e308, -1e308, 1e-100, -1e308, -1e308, 1e308, 1e308, -1e-100],
+            ),
+        ),
+        "opposite cancellation rows",
+    );
+    let strided = testing::expect_ok(matrix.reversed_axes(), "strided groups");
+    let means = testing::expect_ok(strided.mean_axes(Vec::from_array([0]), false), "axis means");
+    testing::assert(means.to_vec() == Vec::from_array([1e-100 / 5.0, -1e-100 / 5.0]));
+}
+
+#[test]
+fn overflowing_mean_sums_remain_finite_for_maximum_observations() -> () {
+    let maximum = float64_from_bits(0x7fefffffffffffff);
+    for count in Vec::from_array([3, 5, 7, 31, 100]) {
+        for value in Vec::from_array([maximum, -maximum]) {
+            let input = testing::expect_ok(
+                Array::full(Vec::from_array([count]), value),
+                "maximum observations",
+            );
+            testing::assert_eq(testing::expect_ok(input.mean(), "finite convex mean"), value);
+        }
+    }
+}

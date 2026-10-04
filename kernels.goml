@@ -244,7 +244,7 @@ fn count_float(value: isize) -> f64 {
     value.to_f64()
 }
 
-fn compensated_sum(values: Slice[f64]) -> f64 {
+fn compensated_sum_parts(values: Slice[f64]) -> (f64, f64) {
     let mut total = 0.0;
     let mut correction = 0.0;
     for value in values {
@@ -259,6 +259,11 @@ fn compensated_sum(values: Slice[f64]) -> f64 {
             correction = 0.0;
         }
         total = next;
-    }
+    };
+    (total, correction)
+}
+
+fn compensated_sum(values: Slice[f64]) -> f64 {
+    let (total, correction) = compensated_sum_parts(values);
     total + correction
 }

@@ -144,7 +144,9 @@ any order but cannot repeat. Custom groups traverse reduced axes in their
 original axis order, with the last axis varying fastest.
 
 Floating sums use Neumaier compensation; `f32` sums accumulate in `f64` before
-narrowing. Mean retries with scaled values when a finite input's sum overflows.
+narrowing. Mean retries with power-of-two scaling based on sample count when a
+finite input's sum overflows. It preserves small cancellation remainders and
+scaling underflow, including subnormal results, without summing huge raw values.
 Variance centers observations on the first value before Welford updates,
 preserving small spreads around large offsets such as `[1e16, 1e16 + 2]`.
 It retries in scaled coordinates when finite inputs produce a nonfinite
