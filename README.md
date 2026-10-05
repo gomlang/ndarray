@@ -108,7 +108,10 @@ for the reference convention used by the interoperability tests.
 products. Downstream implementations inherit these across module boundaries;
 the example supplies a complex-number type. Implementations may
 override kernels. The array API rejects a custom batch result of incorrect
-length before constructing an array.
+length before constructing an array, then snapshots its element buffer. A
+kernel may retain and reuse its returned vector without changing earlier array
+results. This copy is shallow for reference-valued elements, and built-in batch
+kernels also incur the additional buffer copy.
 
 Built-in implementations cover `f32`, `f64`, `i64` and `u64`. Integer operations
 check overflow, unsigned underflow, division by zero and signed MIN/-1. Floating

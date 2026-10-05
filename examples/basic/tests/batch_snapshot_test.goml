@@ -1,0 +1,110 @@
+package tests;
+
+use ecosystem::ndarray::{Array, Scalar, BinaryOp, Execution, Error, ErrorKind, SliceSpec};
+use std::testing;
+
+struct ScratchNumber {
+    value: isize,
+}
+
+static BATCH_SCRATCH: OnceCell[Vec[ScratchNumber]] = OnceCell::new();
+
+fn batch_scratch() -> Vec[ScratchNumber] {
+    BATCH_SCRATCH.get_or_init(|| Vec::with_capacity(8))
+}
+
+impl Scalar for ScratchNumber {
+    fn zero() -> ScratchNumber {
+        ScratchNumber { value: 0 }
+    }
+
+    fn one() -> ScratchNumber {
+        ScratchNumber { value: 1 }
+    }
+
+    fn add(self: ScratchNumber, other: ScratchNumber) -> Result[ScratchNumber, Error] {
+        Result::Ok(ScratchNumber { value: self.value + other.value })
+    }
+
+    fn subtract(self: ScratchNumber, other: ScratchNumber) -> Result[ScratchNumber, Error] {
+        Result::Ok(ScratchNumber { value: self.value - other.value })
+    }
+
+    fn multiply(self: ScratchNumber, other: ScratchNumber) -> Result[ScratchNumber, Error] {
+        Result::Ok(ScratchNumber { value: self.value * other.value })
+    }
+
+    fn divide(self: ScratchNumber, other: ScratchNumber) -> Result[ScratchNumber, Error] {
+        Result::Ok(ScratchNumber { value: self.value / other.value })
+    }
+
+    fn batch(
+        operation: BinaryOp,
+        left: Slice[ScratchNumber],
+        right: Slice[ScratchNumber],
+        execution: Execution,
+    ) -> Result[Vec[ScratchNumber], Error] {
+        let scratch = batch_scratch();
+        scratch.clear();
+        for index in 0..left.len() {
+            scratch.push(Scalar::evaluate(operation, left[index], right[index])?);
+        }
+        Result::Ok(scratch)
+    }
+}
+
+fn scratch_pair(first: isize, second: isize) -> Array[ScratchNumber] {
+    testing::expect_ok(
+        Array::from_vec(
+            Vec::from_array([2]),
+            Vec::from_array([ScratchNumber { value: first }, ScratchNumber { value: second }]),
+        ),
+        "scratch input",
+    )
+}
+
+fn check_scratch_pair(value: Array[ScratchNumber], first: isize, second: isize) -> () {
+    testing::assert_eq(value.size(), 2);
+    testing::assert(value.shape() == Vec::from_array([2]));
+    testing::assert_eq(testing::expect_ok(value.get_flat(0), "first slot").value, first);
+    testing::assert_eq(testing::expect_ok(value.get_flat(1), "second slot").value, second);
+    let snapshot = value.to_vec();
+    testing::assert_eq(snapshot.get(0).value, first);
+    testing::assert_eq(snapshot.get(1).value, second);
+}
+
+#[test]
+fn custom_batch_results_snapshot_reused_mutable_buffers() -> () {
+    let first = testing::expect_ok(scratch_pair(1, 2).add(scratch_pair(10, 20)), "first batch");
+    let scratch = batch_scratch();
+    scratch[0] = ScratchNumber { value: 99 };
+    check_scratch_pair(first, 11, 22);
+    scratch.push(ScratchNumber { value: 33 });
+    check_scratch_pair(first, 11, 22);
+    testing::assert_eq(
+        testing::expect_err(first.get_flat(2), "logical bounds").kind,
+        ErrorKind::Index,
+    );
+    scratch.clear();
+    check_scratch_pair(first, 11, 22);
+    scratch.push(ScratchNumber { value: 77 });
+    check_scratch_pair(first, 11, 22);
+    let second = testing::expect_ok(scratch_pair(3, 4).add(scratch_pair(30, 40)), "second batch");
+    check_scratch_pair(first, 11, 22);
+    check_scratch_pair(second, 33, 44);
+    testing::assert(!first.shares_storage(second));
+    testing::expect_ok(second.set_flat(1, ScratchNumber { value: 88 }), "write second array");
+    check_scratch_pair(first, 11, 22);
+    testing::assert_eq(scratch.get(1).value, 44);
+    let reverse = testing::expect_ok(first.slice(0, SliceSpec::reverse()), "reverse view");
+    testing::assert(reverse.shares_storage(first));
+    testing::expect_ok(reverse.set_flat(0, ScratchNumber { value: 55 }), "write genuine alias");
+    check_scratch_pair(first, 11, 55);
+    check_scratch_pair(second, 33, 88);
+    testing::assert_eq(scratch.get(1).value, 44);
+    let empty_values: Vec[ScratchNumber] = Vec::new();
+    let empty = testing::expect_ok(Array::from_vec(Vec::from_array([0]), empty_values), "empty");
+    testing::assert(testing::expect_ok(empty.add(empty), "empty batch reuse").is_empty());
+    check_scratch_pair(first, 11, 55);
+    check_scratch_pair(second, 33, 88);
+}
