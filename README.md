@@ -76,6 +76,9 @@ source element before writing, so overlapping transposes, reversals and shifted
 slices cannot overwrite unread values. `apply_assign` computes a checked result
 before modifying the destination, preserving it when arithmetic fails.
 
+For contiguous arrays, `to_vec()` inspects the layout once and copies values in
+`O(rank + size)` time, including views with a nonzero storage offset.
+
 Copies are shallow with respect to reference-valued elements. Read-only views
 prevent replacing array slots; they do not freeze objects stored in those slots.
 Arrays and borrowed slices provide no synchronization. Concurrent mutation

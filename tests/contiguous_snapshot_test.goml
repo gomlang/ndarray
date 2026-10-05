@@ -1,0 +1,40 @@
+package tests;
+
+use ecosystem::ndarray::{Array, ErrorKind};
+use std::testing;
+
+#[test]
+fn contiguous_snapshots_keep_shallow_elements_and_independent_slots() -> () {
+    let source = testing::expect_ok(
+        Array::from_vec(
+            Vec::from_array([2, 1, 2]),
+            Vec::from_array([Ref::new(1), Ref::new(2), Ref::new(3), Ref::new(4)]),
+        ),
+        "reference source",
+    );
+    let row = testing::expect_ok(source.index_axis(0, 1), "offset row");
+    let column = testing::expect_ok(row.transpose(Vec::from_array([1, 0])), "singleton strides");
+    let repeated = testing::expect_ok(column.broadcast_to(Vec::from_array([3, 2, 1])), "broadcast");
+    let view = testing::expect_ok(repeated.index_axis(0, 2), "readonly contiguous view");
+    testing::assert(view.is_contiguous());
+    testing::assert(!view.is_writable());
+    let snapshot = view.to_vec();
+    testing::assert_eq(snapshot.len(), 2);
+    testing::assert_eq(snapshot.get(0).get(), 3);
+    testing::assert_eq(snapshot.get(1).get(), 4);
+    snapshot.get(0).set(30);
+    testing::assert_eq(testing::expect_ok(source.get_flat(2), "shared element").get(), 30);
+    snapshot[0] = Ref::new(99);
+    snapshot.clear();
+    testing::assert_eq(testing::expect_ok(view.get_flat(0), "independent slots").get(), 30);
+    testing::assert_eq(testing::expect_ok(view.get_flat(1), "second slot").get(), 4);
+    let copy = view.copy();
+    testing::assert(copy.is_writable());
+    testing::assert(!copy.shares_storage(view));
+    testing::expect_ok(copy.set_flat(0, Ref::new(55)), "write snapshot slot");
+    testing::assert_eq(testing::expect_ok(view.get_flat(0), "source stays intact").get(), 30);
+    testing::assert_eq(
+        testing::expect_err(view.set_flat(0, Ref::new(77)), "readonly source").kind,
+        ErrorKind::ReadOnly,
+    );
+}

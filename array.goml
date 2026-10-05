@@ -139,6 +139,12 @@ impl[T] Array[T] {
 
     pub fn to_vec(self: Array[T]) -> Vec[T] {
         let result = Vec::with_capacity(self.length);
+        if self.is_contiguous() {
+            for flat in 0..self.length {
+                result.push(self.data[self.offset + flat]);
+            }
+            return result
+        }
         for flat in 0..self.length {
             result.push(self.value(flat));
         }
