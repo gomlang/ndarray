@@ -8,8 +8,10 @@ BLAS, LAPACK or Go numerical-library runtime dependency.
 
 ```toml
 [dependencies]
-"ecosystem::ndarray" = "0.1.0"
+"ecosystem::ndarray" = true
 ```
+
+GoML dependencies are unversioned: `true` tracks each package repository’s default branch.
 
 ```goml
 use ecosystem::ndarray::{Array, SolveOptions, Error};
@@ -277,12 +279,11 @@ without AVX2 support.
 
 ## Development and examples
 
-Requires GoML 0.1.56 or newer. The `examples/basic/` example shares the root manifest; test-only helpers are declared in `[dev-dependencies]`. From the library root, run:
+Requires the source-built GoML toolchain with unversioned registry support pinned in [verification/ci/toolchain.json](https://github.com/gomlang/verification/blob/main/ci/toolchain.json). The `examples/basic/` example shares the root manifest; test-only helpers are declared in `[dev-dependencies]`. From the library root, run:
 
 ```sh
 goml run --example basic
 goml test
-goml verify --timeout 300s
 ```
 
-`goml test` builds the example and runs its tests. `goml verify` repeats the example checks as an independent module against an isolated registry snapshot. `(cd ../verification && just ecosystem-test ndarray)` also retains the library-specific smoke and compatibility checks.
+`goml test` builds the example and runs its tests. `(cd ../verification && just ecosystem-test ndarray)` also retains the library-specific smoke and compatibility checks.
