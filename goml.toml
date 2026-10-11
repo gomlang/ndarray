@@ -2,4 +2,4 @@
 path = "ecosystem::ndarray"
 
 [dev-dependencies]
-"ecosystem::verification" = true
+"ecosystem::testkit" = true

@@ -1,6 +1,6 @@
 package tests;
 
-use ecosystem::verification::reference;
+use ecosystem::testkit::reference;
 use ecosystem::ndarray::examples::basic as application;
 use std::testing;
 use std::fs;
@@ -156,7 +156,7 @@ fn decomposition(result: json::Value, expected: json::Value) -> () {
 
 #[test]
 fn independent_numpy_vectors_and_matrix_factorization_invariants() -> () {
-    let source = reference::load_text("tests/data/reference.jsonl");
+    let source = reference::load_text(fixture_path("tests/data/reference.jsonl"));
     let mut count = 0;
     for line in source.split("\n") {
         if line == "" {
@@ -197,5 +197,13 @@ fn absolute(value: f64) -> f64 {
         -value
     } else {
         value
+    }
+}
+
+fn fixture_path(path: string) -> string {
+    if fs::is_dir("examples/basic") {
+        "examples/basic/" + path
+    } else {
+        path
     }
 }
