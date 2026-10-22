@@ -1,0 +1,34 @@
+package ndarray;
+
+impl[T: Scalar] Array[T] {
+    fn cumulative(self: Array[T], axis: isize, product: bool) -> Result[Array[T], Error] {
+        let axis = axis_index(axis, self.dimensions.len())?;
+        let values = self.to_vec();
+        if self.length == 0 {
+            return Result::Ok(owned(self.dimensions, values, self.limits))
+        }
+        let mut stride = 1;
+        for index in(axis + 1)..self.dimensions.len() {
+            stride *= self.dimensions[index];
+        }
+        let width = self.dimensions[axis];
+        for index in 0..self.length {
+            if (index / stride) % width != 0 {
+                values[index] = if product {
+                    Scalar::multiply(values[index - stride], values[index])?
+                } else {
+                    Scalar::add(values[index - stride], values[index])?
+                };
+            }
+        }
+        Result::Ok(owned(self.dimensions, values, self.limits))
+    }
+
+    pub fn cumsum(self: Array[T], axis: isize) -> Result[Array[T], Error] {
+        self.cumulative(axis, false)
+    }
+
+    pub fn cumprod(self: Array[T], axis: isize) -> Result[Array[T], Error] {
+        self.cumulative(axis, true)
+    }
+}

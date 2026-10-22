@@ -1,0 +1,99 @@
+package tests;
+
+use ecosystem::ndarray::{Array, SliceSpec, ErrorKind};
+use std::testing;
+
+#[test]
+fn cumulative_axes_match_independent_prefix_loops_and_numpy_vectors() -> () {
+    let base: Array[i64] = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 3]), Vec::from_array([1, 2, 3, 4, 5, 6])),
+        "array",
+    );
+    testing::assert(
+        testing::expect_ok(base.cumsum(0), "sum").to_vec() == Vec::from_array([1, 2, 3, 5, 7, 9]),
+    );
+    testing::assert(
+        testing::expect_ok(base.cumprod(-1), "product").to_vec()
+            == Vec::from_array([1, 2, 6, 4, 20, 120]),
+    );
+    for array in Vec::from_array(
+        [
+            base,
+            testing::expect_ok(base.reversed_axes(), "transpose"),
+            testing::expect_ok(base.slice(1, SliceSpec::reverse()), "negative stride"),
+        ],
+    ) {
+        for axis in 0..2 {
+            let sums = testing::expect_ok(array.cumsum(axis), "sum");
+            let products = testing::expect_ok(array.cumprod(axis), "product");
+            testing::assert(sums.shape() == array.shape());
+            for i in 0..array.shape()[0] {
+                for j in 0..array.shape()[1] {
+                    let mut sum: i64 = 0;
+                    let mut product: i64 = 1;
+                    for k in 0..(if axis == 0 {
+                        i + 1
+                    } else {
+                        j + 1
+                    }) {
+                        let value = testing::expect_ok(
+                            array.get(
+                                Vec::from_array(
+                                    [
+                                        if axis == 0 {
+                                            k
+                                        } else {
+                                            i
+                                        },
+                                        if axis == 1 {
+                                            k
+                                        } else {
+                                            j
+                                        },
+                                    ],
+                                ),
+                            ),
+                            "value",
+                        );
+                        sum += value;
+                        product *= value;
+                    }
+                    testing::assert_eq(
+                        testing::expect_ok(sums.get(Vec::from_array([i, j])), "sum value"),
+                        sum,
+                    );
+                    testing::assert_eq(
+                        testing::expect_ok(products.get(Vec::from_array([i, j])), "product value"),
+                        product,
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cumulative_empty_axes_overflow_and_float_order() -> () {
+    let empty: Array[i64] = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2, 0, 3]), Vec::new()),
+        "empty",
+    );
+    testing::assert(testing::expect_ok(empty.cumsum(1), "empty sum").shape() == empty.shape());
+    testing::assert(testing::expect_ok(empty.cumprod(-1), "empty product").is_empty());
+    testing::assert_eq(testing::expect_err(empty.cumsum(3), "axis").kind, ErrorKind::Axis);
+    let over: Array[i64] = testing::expect_ok(
+        Array::from_vec(Vec::from_array([2]), Vec::from_array([9223372036854775807, 2])),
+        "overflow",
+    );
+    testing::assert_err(over.cumsum(0));
+    testing::assert_err(over.cumprod(0));
+    testing::assert(over.to_vec() == Vec::from_array([9223372036854775807, 2]));
+    let floats: Array[f64] = testing::expect_ok(
+        Array::from_vec(Vec::from_array([3]), Vec::from_array([1e16, 1.0, -1e16])),
+        "floats",
+    );
+    testing::assert(
+        testing::expect_ok(floats.cumsum(0), "ordered").to_vec()
+            == Vec::from_array([1e16, 1e16, 0.0]),
+    );
+}

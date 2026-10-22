@@ -287,3 +287,12 @@ goml test
 ```
 
 `goml test` builds the example and runs its tests. `(cd ../workflows && just ecosystem-test ndarray)` also retains the library-specific smoke and compatibility checks.
+
+`Array[T: Scalar].cumsum(axis)` and `.cumprod(axis)` return independent owned
+arrays with the same shape and limits. Negative axes count from the end, as in
+other axis APIs; rank-zero arrays have no valid axis. Empty axes remain empty.
+Views (including negative strides and transposes) are traversed in logical
+order. Each prefix starts from the first actual element and combines left to
+right through checked `Scalar.add`/`multiply`; integer overflow is an error and
+never mutates the source. Floating results use this sequential order, without
+SIMD reassociation. Work and additional storage are O(number of elements).
